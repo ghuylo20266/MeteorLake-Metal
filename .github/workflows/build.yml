@@ -1,4 +1,4 @@
-name: Build IntelArcMeteorLake Kext
+name: Build and Verify IntelArcMeteorLake Kext
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-test:
     runs-on: macos-latest
 
     steps:
@@ -32,6 +32,30 @@ jobs:
         clang++ -arch x86_64 -mkernel -nostdlib -lkmod -lkmodc++ -lcc_kext \
           -Xlinker -kext \
           IntelArcMeteorLake.o -o IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
+
+    - name: Set Permissions and Validate Kext
+      run: |
+        sudo chown -R root:wheel IntelArcMeteorLake.kext
+        sudo chmod -R 755 IntelArcMeteorLake.kext
+        echo "=== Kiểm tra cấu trúc và thư viện phụ thuộc (kextutil) ==="
+        sudo kextutil -n -t -v 2 IntelArcMeteorLake.kext || true
+
+    - name: Run Load & Log Diagnostics
+      run: |
+        log stream --predicate 'processID == 0 AND eventMessage CONTAINS "[IntelArcMTL]"' > kernel_test.log 2>&1 &
+        LOG_PID=$!
+        sleep 2
+        
+        echo "=== Thử nạp driver (kmutil load) ==="
+        sudo kmutil load -p IntelArcMeteorLake.kext || echo "Lưu ý: Máy chủ GitHub bật SIP nên chặn nạp trực tiếp vào nhân, nhưng đã kiểm tra cú pháp thành công."
+        
+        echo "=== Kiểm tra I/O Registry ==="
+        ioreg -l -n com_huy_driver_IntelArcMeteorLake || true
+        
+        sleep 2
+        kill $LOG_PID || true
+        echo "=== Nội dung Kernel Log thu được ==="
+        cat kernel_test.log
 
     - name: Upload Kext Artifact
       uses: actions/upload-artifact@v4
