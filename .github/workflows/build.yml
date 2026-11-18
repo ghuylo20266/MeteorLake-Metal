@@ -33,12 +33,14 @@ jobs:
           -Xlinker -kext \
           IntelArcMeteorLake.o -o IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
 
-    - name: Set Permissions and Validate Kext
+        - name: Set Permissions and Validate Kext
       run: |
         sudo chown -R root:wheel IntelArcMeteorLake.kext
         sudo chmod -R 755 IntelArcMeteorLake.kext
-        echo "=== Kiểm tra cấu trúc và thư viện phụ thuộc (kextutil) ==="
-        sudo kextutil -n -t -v 2 IntelArcMeteorLake.kext || true
+        echo "=== Kiểm tra cấu trúc nhị phân và thư viện liên kết (otool) ==="
+        otool -L IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
+        echo "=== Thẩm định gói Kext bằng kmutil inspect ==="
+        sudo kmutil inspect -p IntelArcMeteorLake.kext --no-header || true
 
     - name: Run Load & Log Diagnostics
       run: |
