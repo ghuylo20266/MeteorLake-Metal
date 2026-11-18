@@ -1,0 +1,40 @@
+name: Build IntelArcMeteorLake Kext
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create Kext bundle structure
+      run: |
+        mkdir -p IntelArcMeteorLake.kext/Contents/MacOS
+        cp Info.plist IntelArcMeteorLake.kext/Contents/
+
+    - name: Compile Kernel Extension
+      run: |
+        SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
+        clang++ -x c++ -arch x86_64 -mkernel -nostdinc \
+          -fno-builtin -fno-exceptions -fno-rtti -fapple-kext \
+          -D__KERNEL__ -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT \
+          -I"$SDK_PATH/System/Library/Frameworks/Kernel.framework/Headers" \
+          -I"$SDK_PATH/System/Library/Frameworks/Kernel.framework/PrivateHeaders" \
+          -I. \
+          -c IntelArcMeteorLake.cpp -o IntelArcMeteorLake.o
+        
+        clang++ -arch x86_64 -mkernel -nostdlib -lkmod -lkmodc++ -lcc_kext \
+          -Xlinker -kext \
+          IntelArcMeteorLake.o -o IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
+
+    - name: Upload Kext Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: IntelArcMeteorLake-Kext
+        path: IntelArcMeteorLake.kext
