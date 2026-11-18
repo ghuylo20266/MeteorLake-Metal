@@ -1,66 +1,50 @@
-name: Build and Verify IntelArcMeteorLake Kext
+name: Build macOS Intel Arc Kext
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-and-test:
-    runs-on: macos-latest
-
+  build-kext:
+    runs-on: macos-14
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Create Kext bundle structure
-      run: |
-        mkdir -p IntelArcMeteorLake.kext/Contents/MacOS
-        cp Info.plist IntelArcMeteorLake.kext/Contents/
+      - name: Compile Kernel Extension (MH_KEXT_BUNDLE)
+        run: |
+          SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
+          mkdir -p IntelArcMeteorLake.kext/Contents/MacOS
+          cp Info.plist IntelArcMeteorLake.kext/Contents/Info.plist
 
-    - name: Compile Kernel Extension
-      run: |
-        SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
-        clang++ -x c++ -arch x86_64 -mkernel -nostdinc \
-          -fno-builtin -fno-exceptions -fno-rtti -fapple-kext \
-          -D__KERNEL__ -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT \
-          -I"$SDK_PATH/System/Library/Frameworks/Kernel.framework/Headers" \
-          -I"$SDK_PATH/System/Library/Frameworks/Kernel.framework/PrivateHeaders" \
-          -I. \
-          -c IntelArcMeteorLake.cpp -o IntelArcMeteorLake.o
-        
-        clang++ -arch x86_64 -mkernel -nostdlib -lkmod -lkmodc++ -lcc_kext \
-          -Xlinker -kext \
-          IntelArcMeteorLake.o -o IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
+          clang++ -arch x86_64 \
+            -mkernel \
+            -fapple-kext \
+            -nostdinc \
+            -fno-builtin \
+            -fno-exceptions \
+            -fno-rtti \
+            -isysroot "$SDK_PATH" \
+            -I"$SDK_PATH/System/Library/Frameworks/Kernel.framework/Headers" \
+            -c IntelArcMeteorLake.cpp -o IntelArcMeteorLake.o
 
-        - name: Set Permissions and Validate Kext
-      run: |
-        sudo chown -R root:wheel IntelArcMeteorLake.kext
-        sudo chmod -R 755 IntelArcMeteorLake.kext
-        echo "=== Kiểm tra cấu trúc nhị phân và thư viện liên kết (otool) ==="
-        otool -L IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
-        echo "=== Thẩm định gói Kext bằng kmutil inspect ==="
-        sudo kmutil inspect -p IntelArcMeteorLake.kext --no-header || true
+          clang++ -arch x86_64 \
+            -mkernel \
+            -fapple-kext \
+            -nostdlib \
+            -Wl,-kext \
+            -lkmodc++ \
+            -lkmod \
+            -lcc_kext \
+            IntelArcMeteorLake.o \
+            -o IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
 
-    - name: Run Load & Log Diagnostics
-      run: |
-        log stream --predicate 'processID == 0 AND eventMessage CONTAINS "[IntelArcMTL]"' > kernel_test.log 2>&1 &
-        LOG_PID=$!
-        sleep 2
-        
-        echo "=== Thử nạp driver (kmutil load) ==="
-        sudo kmutil load -p IntelArcMeteorLake.kext || echo "Lưu ý: Máy chủ GitHub bật SIP nên chặn nạp trực tiếp vào nhân, nhưng đã kiểm tra cú pháp thành công."
-        
-        echo "=== Kiểm tra I/O Registry ==="
-        ioreg -l -n com_huy_driver_IntelArcMeteorLake || true
-        
-        sleep 2
-        kill $LOG_PID || true
-        echo "=== Nội dung Kernel Log thu được ==="
-        cat kernel_test.log
+          file IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
+          otool -hv IntelArcMeteorLake.kext/Contents/MacOS/IntelArcMeteorLake
 
-    - name: Upload Kext Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: IntelArcMeteorLake-Kext
-        path: IntelArcMeteorLake.kext
+      - name: Upload Compiled Kext Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntelArcMeteorLake-Kext
+          path: IntelArcMeteorLake.kext
